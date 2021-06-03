@@ -110,7 +110,7 @@ def extract_coderefs(config, results_folder):
 
                     article_url = base_url + full_path[full_path.find('\\', len(folder) + 1) : -3].replace('\\','/')
                     results.append([docset, full_path, article_url, metadata["ms.author"], metadata["ms.reviewer"], metadata["ms.date"],
-                        ref["line"], ref["type"], ref["detail"], ref["file_url"]])
+                        ref["line"], ref["type"], ref["detail"], ref["repo"], ref["file_url"]])
 
 
         # Sort the results (by filename, then line number), and save to a .csv file.
@@ -127,7 +127,7 @@ def extract_coderefs(config, results_folder):
         with open(result_filename + '.csv', 'w', newline='', encoding='utf-8') as csv_file:    
             writer = csv.writer(csv_file)
             writer.writerow(["docset", "file", "url", "ms.author", "ms.reviewer", "ms.date", "refLine",
-                "refType", "refDetail", "refUrl"])
+                "refType", "refDetail", "repoUrl", "refUrl"])
             writer.writerows(results)
 
         print(f"extract_coderefs, INFO, Completed CSV results file, , {result_filename}.csv")

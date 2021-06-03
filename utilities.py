@@ -201,7 +201,7 @@ def find_external_code_refs(content, repo_data):
             result["detail"] = props["id"]
         elif "range" in props.keys():
             result["type"] = "range"
-            result["detail"] = props["range"]
+            result["detail"] = "'" + props["range"] + "'"  # Quoted to avoid becoming a date in Excel
         else:
             result["type"] = "whole_file"
             result["detail"] = ""
