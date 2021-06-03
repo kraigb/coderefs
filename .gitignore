@@ -7,8 +7,9 @@ __pycache__
 .pytest_cache
 
 # Runtime files
-Data/*
+data/*
 *.csv
 *.xls*
 
-tally*.json
+# Files with secured information
+setenv.cmd
