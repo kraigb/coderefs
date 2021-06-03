@@ -1,0 +1,22 @@
+{
+    "content": [
+        {
+            "repo": "MicrosoftDocs/azure-docs-pr",
+            "disabled": false,
+            "path": "${CODEREFS_REPO_ROOT}\\azure-docs-pr",
+            "opc_folder": "",
+            "docfx_folder": "",
+            "url": "http://docs.microsoft.com/azure",
+            "exclude_folders" : [".whatsnew", "bread", "markdown templates", "media"]            
+        },
+        {
+            "repo": "Azure/azure-dev-docs",
+            "disabled": false,
+            "path": "${CODEREFS_REPO_ROOT}\\azure-dev-docs-pr",
+            "opc_folder": "",
+            "docfx_folder": "articles",
+            "url": "https://docs.microsoft.com/azure/developer",
+            "exclude_folders" : []
+        }
+    ]
+}

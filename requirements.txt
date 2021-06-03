@@ -1,0 +1,5 @@
+Markdown
+numpy
+pandas
+text-unidecode
+urllib3

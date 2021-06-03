@@ -1,0 +1,15 @@
+# Environment folders
+.vscode
+.env/*
+.venv/*
+.winenv
+__pycache__
+.pytest_cache
+
+# Runtime files
+Data/*
+CodeRefDataData/*
+*.csv
+*.xls*
+
+tally*.json
