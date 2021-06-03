@@ -2,7 +2,7 @@
     "content": [
         {
             "repo": "MicrosoftDocs/azure-docs-pr",
-            "disabled": false,
+            "disabled": true,
             "path": "${CODEREFS_REPO_ROOT}\\azure-docs-pr",
             "opc_folder": "",
             "docfx_folder": "",

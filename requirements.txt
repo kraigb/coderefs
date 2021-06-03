@@ -1,5 +1,2 @@
-Markdown
-numpy
-pandas
-text-unidecode
-urllib3
+requests
+dateutil

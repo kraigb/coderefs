@@ -3,12 +3,14 @@ import getopt
 import os
 import re
 import glob
-import sys
+import requests
+from datetime import datetime
 
 def get_next_filename(prefix=None):    
     """ Determine the next filename by incrementing 1 above the largest existing file number in the current folder for today's date."""
 
-    today = datetime.date.today()
+    from datetime import date
+    today = date.today()
 
     date_pattern = prefix + '_' + str(today)
     files = [f for f in os.listdir('.') if re.match(date_pattern + '-[0-9]+.csv', f)]
@@ -226,3 +228,64 @@ def find_external_code_refs(content, repo_data):
         results.append(result)
 
     return results
+
+
+def get_commit_history(file_url, start_date=None):
+    # Source URLs are of the form:
+    #     https://github.com/{owner}/{repo}/blob/{branch}/{path}
+    #     
+    # RegEx:
+    #     https:\/\/github\.com\/([^\/.]+)*\/([^\/.]+)*\/blob\/([^\/.]+)*\/(.+)
+    #     Group 1 is {owner}, Group 2 is {repo}, Group 3 is {branch}, Group 4 is {path}
+    #
+    # For example:
+    #     https://github.com/Azure-Samples/functions-quickstarts-java/blob/master/functions-add-output-binding-storage-queue/src/main/java/com/function/Function.java
+    #
+    # Commit history for the file is:
+    #     https://api.github.com/repos/{owner}/{repo}/commits?sha={branch}&path={path}
+    #
+    # For example:
+    #     https://api.github.com/repos/Azure-Samples/functions-quickstarts-java/commits?path=functions-add-output-binding-storage-queue/src/main/java/com/function/Function.java
+    #    
+    # Need to assume public repos (as samples generally are) otherwise we run into auth issues.
+    #
+    dates = []
+    most_recent = ""
+    
+    if None != start_date:
+        # Assume start_date is in ms.date format
+        dt_start = datetime.strptime(start_date, "%m/%d/%Y")
+    else:
+        # Some ridiculously early date for sample code--Microsoft's founding date. :)
+        dt_start = datetime(1975, 4, 4)
+
+    re_url = "https:\/\/github\.com\/([^\/.]+)*\/([^\/.]+)*\/blob\/([^\/.]+)*\/(.+)"
+    match = re.match(re_url, file_url)
+
+    if None == match:
+        print(f"extract_coderefs, WARNING, GitHub file URL does not match expected pattern, , {file_url}")
+        return None, ""
+    
+    history_url = f"https://api.github.com/repos/{match.group(1)}/{match.group(2)}/commits?sha={match.group(3)}&path={match.group(4)}"
+
+    response = requests.get(history_url)
+
+    if response.status_code == 200:
+        response_data = response.json()
+
+        # Extract all the commit dates that are after the start date (not on the start date, as samples
+        # and articles are often updated together).
+        for commit in response_data:
+            date = commit["commit"]["author"]["date"]
+            dt = datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+            
+            if (dt.date() > dt_start.date()):
+                dates.append(dt)
+
+            # Always save the first date we find as the most recent
+            if "" == most_recent:
+                most_recent = dt.strftime('%m/%d/%Y')
+    else:
+        print(f"extract_coderefs, ERROR, Failed to get commit history, {history_url}, {file_url}")
+
+    return len(dates), most_recent
