@@ -70,6 +70,10 @@ def extract_coderefs(config, results_folder):
         desired_metadata = ["ms.author", "ms.reviewer", "ms.service", "ms.subservice"]
         globs = get_file_metadata_globs(docfx_folder, file_metadata, desired_metadata)
 
+        # Cache commit history obtained from GitHub to avoid redundant API calls
+        # thereby improving performance and lowering API usage.
+        commit_cache = { }
+
         for root, dirs, files in os.walk(folder):
             # Omit any excluded folders from those we'll process.
             # TODO: does this have any effect?
@@ -106,25 +110,19 @@ def extract_coderefs(config, results_folder):
 
                 print(f"extract_coderefs, INFO, Processing external code references, , {full_path}")
 
-                # Values to cache across iterations of the coderefs loop
-                last_file = ""
-                num_commits = 0
-                most_recent_commit = ""
-
                 for ref in coderefs:                
                     if not "file_url" in ref.keys():
                         print(f"extract_coderefs, WARNING, Code reference uses invalid repo path_to_root, {ref['line']}, {full_path}")
 
                     article_url = base_url + full_path[full_path.find('\\', len(folder) + 1) : -3].replace('\\','/')
 
-                    # If the file we're processing is the same, we don't need to get commit history again.
-                    if last_file != ref["file_url"]:
-                        num_commits, most_recent_commit = get_commit_history(ref["file_url"], metadata["ms.date"])                    
-                        last_file = ref["file_url"]
+                    num_commits, most_recent_commit, most_recent_commit_url = get_commit_history(ref["file_url"],
+                        commit_cache, metadata["ms.date"])
                     
                     results.append([docset, full_path, article_url, metadata["ms.service"], metadata["ms.subservice"],
                         metadata["ms.author"], metadata["ms.reviewer"], metadata["ms.date"],
-                        ref["line"], ref["type"], ref["detail"], ref["repo"], ref["file_url"], num_commits, most_recent_commit])
+                        ref["line"], ref["type"], ref["detail"], ref["repo"], ref["file_url"],
+                        num_commits, most_recent_commit, most_recent_commit_url])
 
 
         # Sort the results (by filename (index 1), then line number (index 8)), and save to a .csv file.
@@ -140,7 +138,8 @@ def extract_coderefs(config, results_folder):
         with open(result_filename + '.csv', 'w', newline='', encoding='utf-8') as csv_file:    
             writer = csv.writer(csv_file)
             writer.writerow(["docset", "file", "articleUrl", "ms.service", "ms.subservice", "ms.author", "ms.reviewer",
-                "ms.date", "refLine", "refType", "refDetail", "repoUrl", "refUrl", "commitsSinceDate", "mostRecentCommit"])
+                "ms.date", "refLine", "refType", "refDetail", "repoUrl", "refUrl",
+                "commitsSinceDate", "mostRecentCommit", "mostRecentCommitUrl"])
             writer.writerows(results)
 
         print(f"extract_coderefs, INFO, Completed CSV results file, , {result_filename}.csv")

@@ -4,6 +4,7 @@ import os
 import re
 import glob
 import requests
+from requests.auth import HTTPBasicAuth
 from datetime import datetime
 
 def get_next_filename(prefix=None):    
@@ -230,7 +231,7 @@ def find_external_code_refs(content, repo_data):
     return results
 
 
-def get_commit_history(file_url, start_date=None):
+def get_commit_history(file_url, commit_cache, start_date=None):
     # Source URLs are of the form:
     #     https://github.com/{owner}/{repo}/blob/{branch}/{path}
     #     
@@ -251,6 +252,7 @@ def get_commit_history(file_url, start_date=None):
     #
     dates = []
     most_recent = ""
+    most_recent_url = ""
     
     if None != start_date:
         # Assume start_date is in ms.date format
@@ -264,28 +266,40 @@ def get_commit_history(file_url, start_date=None):
 
     if None == match:
         print(f"extract_coderefs, WARNING, GitHub file URL does not match expected pattern, , {file_url}")
-        return None, ""
+        return None, "", ""
     
     history_url = f"https://api.github.com/repos/{match.group(1)}/{match.group(2)}/commits?sha={match.group(3)}&path={match.group(4)}"
 
-    response = requests.get(history_url)
-
-    if response.status_code == 200:
-        response_data = response.json()
-
-        # Extract all the commit dates that are after the start date (not on the start date, as samples
-        # and articles are often updated together).
-        for commit in response_data:
-            date = commit["commit"]["author"]["date"]
-            dt = datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-            
-            if (dt.date() > dt_start.date()):
-                dates.append(dt)
-
-            # Always save the first date we find as the most recent
-            if "" == most_recent:
-                most_recent = dt.strftime('%m/%d/%Y')
+    if history_url in commit_cache.keys():
+        commit = commit_cache[history_url]
+        return commit["num_commits"], commit["most_recent"], commit["most_recent_url"]
     else:
-        print(f"extract_coderefs, ERROR, Failed to get commit history, {history_url}, {file_url}")
+        user = os.getenv("GITHUB_USER")
+        token = os.getenv("GITHUB_ACCESS_TOKEN")
 
-    return len(dates), most_recent
+        response = requests.get(history_url, auth = HTTPBasicAuth(user, token))
+
+        if response.status_code == 200:
+            response_data = response.json()
+
+            # Extract all the commit dates that are after the start date (not on the start date, as samples
+            # and articles are often updated together).
+            for commit in response_data:
+                date = commit["commit"]["author"]["date"]
+                dt = datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+                
+                if (dt.date() > dt_start.date()):
+                    dates.append(dt)
+
+                # Always save the first date we find as the most recent
+                if "" == most_recent:
+                    most_recent = dt.strftime('%m/%d/%Y')
+                    most_recent_url = commit["html_url"]
+        else:
+            print(f"extract_coderefs, ERROR, Failed to get commit history, {history_url}, {file_url}")
+
+        num_commits = len(dates)
+        commit = { "num_commits" : num_commits, "most_recent" : most_recent, "most_recent_url": most_recent_url }
+        commit_cache.update({ history_url: commit })
+
+        return num_commits, most_recent, most_recent_url

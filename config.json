@@ -11,7 +11,7 @@
         },
         {
             "repo": "Azure/azure-dev-docs",
-            "disabled": false,
+            "disabled": true,
             "path": "${CODEREFS_REPO_ROOT}\\azure-dev-docs-pr",
             "opc_folder": "",
             "docfx_folder": "articles",
