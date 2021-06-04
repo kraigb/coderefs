@@ -1,10 +1,9 @@
 import csv
 import os
-import subprocess
 import sys
 import pathlib
-import re
 import json
+
 
 from utilities import *
 
@@ -18,7 +17,7 @@ def extract_coderefs(config, results_folder):
         # Load up docset configuration
         # TODO: can do more error checking and validation here
         docset = content_set.get("repo")
-        folder = os.path.expandvars(content_set.get("path"))  # Expands ${INVENTORY_REPO_ROOT}
+        folder = os.path.expandvars(content_set.get("path"))  # Expands ${CODEREFS_REPO_ROOT}
         opc_path = os.path.join(folder, content_set.get("opc_folder"), ".openpublishing.publish.config.json")
         docfx_folder = os.path.join(folder, content_set.get("docfx_folder"))
         docfx_path = os.path.join(docfx_folder, "docfx.json")
@@ -115,19 +114,27 @@ def extract_coderefs(config, results_folder):
                         print(f"extract_coderefs, WARNING, Code reference uses invalid repo path_to_root, {ref['line']}, {full_path}")
 
                     article_url = base_url + full_path[full_path.find('\\', len(folder) + 1) : -3].replace('\\','/')
+                
+                    last_local_commit = get_last_local_commit(folder, full_path)
+                    commit_data = get_commit_history(ref["file_url"], commit_cache, metadata["ms.date"], last_local_commit)
+                                        
+                    if None == commit_data:
+                        print(f"extract_coderefs, WARNING, No commit history obtained, {ref['file_url']}, {full_path}")
+                        continue
 
-                    num_commits, most_recent_commit, most_recent_commit_url = get_commit_history(ref["file_url"],
-                        commit_cache, metadata["ms.date"])
-                    
-                    results.append([docset, full_path, article_url, metadata["ms.service"], metadata["ms.subservice"],
-                        metadata["ms.author"], metadata["ms.reviewer"], metadata["ms.date"],
+                    # NOTE: match the order of this list with the CSV header later
+                    results.append([
+                        docset, full_path, article_url, metadata["ms.service"], metadata["ms.subservice"],
+                        metadata["ms.author"], metadata["ms.reviewer"], metadata["ms.date"], last_local_commit,
                         ref["line"], ref["type"], ref["detail"], ref["repo"], ref["file_url"],
-                        num_commits, most_recent_commit, most_recent_commit_url])
+                        commit_data["commits_since_start"], commit_data["commits_since_local"],
+                        commit_data["most_recent"], commit_data["most_recent_url"]
+                    ])
 
 
-        # Sort the results (by filename (index 1), then line number (index 8)), and save to a .csv file.
-        print("extract_coderefs, INFO, Sorting results by filename, , ")        
-        results.sort(key=lambda row: (row[1], int(row[8])))        
+        # Sort the results (by filename (index 1), then line number (index 9)), and save to a .csv file.
+        print("extract_coderefs, INFO, Sorting results by filename, , ")
+        results.sort(key=lambda row: (row[1], int(row[9])))        
 
         # Open CSV output file, which we do before running the searches because
         # we consolidate everything into a single file
@@ -137,9 +144,11 @@ def extract_coderefs(config, results_folder):
 
         with open(result_filename + '.csv', 'w', newline='', encoding='utf-8') as csv_file:    
             writer = csv.writer(csv_file)
+
+            # NOTE: match the order of this header with the results.append call earlier
             writer.writerow(["docset", "file", "articleUrl", "ms.service", "ms.subservice", "ms.author", "ms.reviewer",
-                "ms.date", "refLine", "refType", "refDetail", "repoUrl", "refUrl",
-                "commitsSinceDate", "mostRecentCommit", "mostRecentCommitUrl"])
+                "ms.date", "lastArticleCommit", "refLine", "refType", "refDetail", "repoUrl", "refUrl",
+                "commitsSinceMsDate", "commitsSinceLastLocalCommit", "mostRecentCommit", "mostRecentCommitUrl"])
             writer.writerows(results)
 
         print(f"extract_coderefs, INFO, Completed CSV results file, , {result_filename}.csv")

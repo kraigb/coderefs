@@ -1,6 +1,7 @@
 import datetime
 import getopt
 import os
+from subprocess import Popen, PIPE
 import re
 import glob
 import requests
@@ -44,6 +45,25 @@ def parse_config_arguments(argv):
     
     return (config_file, args)
 
+
+def get_last_local_commit(folder, full_path):
+    rel_path = os.path.relpath(full_path, folder)
+    # Folder is the repo root; rel_path if the file's relative location.
+    # --format=%ci provides simplest output to parse
+    p = Popen(f"git log -1 --format=%ci {rel_path}",
+        shell=True, cwd=folder, stdout=PIPE, stderr=PIPE, )
+
+    out, err = p.communicate()        
+
+    if 0 == len(out):
+        print(f"extract_coderefs, WARNING, Could not obtain last local commit on article, {err.decode('ascii')}, {full_path}")
+        return datetime.today().strftime('%m/%d/%Y')
+
+    # Reformat the yyyy-mm-dd commit date to a mm/dd/yyyy date string
+    dt = datetime.strptime(out.split()[0].decode('ascii'), "%Y-%m-%d")
+    last_local_commit = dt.strftime('%m/%d/%Y')
+    return last_local_commit
+    
 
 def line_starts_with_metadata(line, path):
     # Output warnings for these (needs to be fixed in the source)
@@ -231,13 +251,14 @@ def find_external_code_refs(content, repo_data):
     return results
 
 
-def get_commit_history(file_url, commit_cache, start_date=None):
+def get_commit_history(file_url, commit_cache, start_date=None, start_date_local=None):
     # Source URLs are of the form:
     #     https://github.com/{owner}/{repo}/blob/{branch}/{path}
     #     
     # RegEx:
-    #     https:\/\/github\.com\/([^\/.]+)*\/([^\/.]+)*\/blob\/([^\/.]+)*\/(.+)
+    #     https:\/\/github\.com\/([^\/.]+)*\/([^\/.]+)*\/?\/blob\/([^\/.]+)*\/(.+)
     #     Group 1 is {owner}, Group 2 is {repo}, Group 3 is {branch}, Group 4 is {path}
+    #     The extra \/? allows for // before blob, which occurs on occasion in the Azure-docs repo.
     #
     # For example:
     #     https://github.com/Azure-Samples/functions-quickstarts-java/blob/master/functions-add-output-binding-storage-queue/src/main/java/com/function/Function.java
@@ -251,6 +272,8 @@ def get_commit_history(file_url, commit_cache, start_date=None):
     # Need to assume public repos (as samples generally are) otherwise we run into auth issues.
     #
     dates = []
+    commits_since_start = 0
+    commits_since_local = 0
     most_recent = ""
     most_recent_url = ""
     
@@ -261,19 +284,22 @@ def get_commit_history(file_url, commit_cache, start_date=None):
         # Some ridiculously early date for sample code--Microsoft's founding date. :)
         dt_start = datetime(1975, 4, 4)
 
+    if None != start_date_local:
+        dt_local = datetime.strptime(start_date_local, "%m/%d/%Y")
+    else:
+        dt_local = datetime(1975, 4, 4)
+
+
     re_url = "https:\/\/github\.com\/([^\/.]+)*\/([^\/.]+)*\/blob\/([^\/.]+)*\/(.+)"
     match = re.match(re_url, file_url)
 
     if None == match:
         print(f"extract_coderefs, WARNING, GitHub file URL does not match expected pattern, , {file_url}")
-        return None, "", ""
+        return None
     
     history_url = f"https://api.github.com/repos/{match.group(1)}/{match.group(2)}/commits?sha={match.group(3)}&path={match.group(4)}"
 
-    if history_url in commit_cache.keys():
-        commit = commit_cache[history_url]
-        return commit["num_commits"], commit["most_recent"], commit["most_recent_url"]
-    else:
+    if not history_url in commit_cache.keys():
         user = os.getenv("GITHUB_USER")
         token = os.getenv("GITHUB_ACCESS_TOKEN")
 
@@ -281,25 +307,33 @@ def get_commit_history(file_url, commit_cache, start_date=None):
 
         if response.status_code == 200:
             response_data = response.json()
-
-            # Extract all the commit dates that are after the start date (not on the start date, as samples
-            # and articles are often updated together).
-            for commit in response_data:
-                date = commit["commit"]["author"]["date"]
-                dt = datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-                
-                if (dt.date() > dt_start.date()):
-                    dates.append(dt)
-
-                # Always save the first date we find as the most recent
-                if "" == most_recent:
-                    most_recent = dt.strftime('%m/%d/%Y')
-                    most_recent_url = commit["html_url"]
+            commit_cache.update({ history_url: response_data })
         else:
             print(f"extract_coderefs, ERROR, Failed to get commit history, {history_url}, {file_url}")
+            return None
 
-        num_commits = len(dates)
-        commit = { "num_commits" : num_commits, "most_recent" : most_recent, "most_recent_url": most_recent_url }
-        commit_cache.update({ history_url: commit })
+    else:
+        response_data = commit_cache[history_url]
 
-        return num_commits, most_recent, most_recent_url
+    # Extract all the commit dates that are after the start date (not on the start date, as samples
+    # and articles are often updated together).
+    for commit in response_data:
+        date = commit["commit"]["author"]["date"]
+        dt = datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+        
+        if "" == most_recent:
+            most_recent = dt.strftime('%m/%d/%Y')
+            most_recent_url = commit["html_url"]
+
+        if (dt.date() > dt_start.date()):
+            commits_since_start += 1
+
+        if (dt.date() > dt_local.date()):
+            commits_since_local += 1
+
+    return {
+        "commits_since_start": commits_since_start,
+        "commits_since_local": commits_since_local,
+        "most_recent": most_recent,
+        "most_recent_url": most_recent_url
+    }    
